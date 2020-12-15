@@ -65,7 +65,7 @@ export interface ResourceOptions {
     imageTimeout: number;
     useCORS: boolean;
     allowTaint: boolean;
-    proxy?: string;
+    proxy?: string | ((url: string) => Blob | Promise<Blob>);
 }
 
 export class Cache {
@@ -106,7 +106,7 @@ export class Cache {
         const useProxy =
             !isInlineImage(key) &&
             !isSameOrigin &&
-            typeof this._options.proxy === 'string' &&
+            (typeof this._options.proxy === 'string' || typeof this._options.proxy === 'function') &&
             FEATURES.SUPPORT_CORS_XHR &&
             !useCORS;
         if (!isSameOrigin && this._options.allowTaint === false && !isInlineImage(key) && !useProxy && !useCORS) {
@@ -155,6 +155,20 @@ export class Cache {
 
         if (!proxy) {
             throw new Error('No proxy defined');
+        }
+
+        if (typeof proxy === 'function') {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const blob = await proxy(src);
+                    const reader = new FileReader();
+                    reader.addEventListener('load', () => resolve(reader.result as string), false);
+                    reader.addEventListener('error', e => reject(e), false);
+                    reader.readAsDataURL(blob);
+                } catch (err) {
+                    reject(err);
+                }
+            });
         }
 
         const key = src.substring(0, 256);
